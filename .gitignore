@@ -1,0 +1,7 @@
+__pycache__/*
+build/
+*.log
+*.so
+*.pkl
+*egg-info/
+DATA/
