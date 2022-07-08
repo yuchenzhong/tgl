@@ -272,20 +272,20 @@ class ParallelSampler
                             {
                                 // TGAT style
                                 s_search = indptr[n];
-                                auto e_it = std::upper_bound(ts.begin() + indptr[n], 
+                                auto e_it = std::lower_bound(ts.begin() + indptr[n], 
                                                              ts.begin() + indptr[n + 1], nts);
-                                e_search = std::max(int(e_it - ts.begin()) - 1, s_search);
+                                e_search = std::max(int(e_it - ts.begin()), s_search);
                             }
                             else
                             {
                                 // DySAT style
-                                auto s_it = std::upper_bound(ts.begin() + indptr[n],
+                                auto s_it = std::lower_bound(ts.begin() + indptr[n],
                                                              ts.begin() + indptr[n + 1],
                                                              nts + offset - window_duration);
-                                s_search = std::max(int(s_it - ts.begin()) - 1, indptr[n]);
-                                auto e_it = std::upper_bound(ts.begin() + indptr[n],
+                                s_search = std::max(int(s_it - ts.begin()), indptr[n]);
+                                auto e_it = std::lower_bound(ts.begin() + indptr[n],
                                                              ts.begin() + indptr[n + 1], nts + offset);
-                                e_search = std::max(int(e_it - ts.begin()) - 1, s_search);
+                                e_search = std::max(int(e_it - ts.begin()), s_search);
                             }
                             if (tid == 0)
                                 ret[0].search_time += omp_get_wtime() - t_search_s;
