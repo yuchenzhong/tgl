@@ -75,7 +75,7 @@ def eval(mode='val'):
         total_loss = 0
         for _, rows in eval_df.groupby(eval_df.index // train_param['batch_size']):
         # for _, rows in eval_df.groupby(eval_df.index // 600):
-            root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int32)
+            root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int64)
             ts = np.concatenate([rows.time.values, rows.time.values, rows.time.values]).astype(np.float32)
             if sampler is not None:
                 if 'no_neg' in sample_param and sample_param['no_neg']:
@@ -151,7 +151,7 @@ for e in range(train_param['epoch']):
         model.memory_updater.last_updated_nid = None
     for _, rows in df[:train_edge_end].groupby(group_indexes[random.randint(0, len(group_indexes) - 1)]):
         t_tot_s = time.time()
-        root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int32)
+        root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int64)
         ts = np.concatenate([rows.time.values, rows.time.values, rows.time.values]).astype(np.float32)
         if sampler is not None:
             if 'no_neg' in sample_param and sample_param['no_neg']:

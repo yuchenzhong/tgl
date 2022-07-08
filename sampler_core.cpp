@@ -10,8 +10,8 @@
 
 namespace py = pybind11;
 
-typedef int NodeIDType;
-typedef int EdgeIDType;
+typedef long NodeIDType;
+typedef long EdgeIDType;
 typedef float TimeStampType;
 
 class TemporalGraphBlock
@@ -274,7 +274,7 @@ class ParallelSampler
                                 s_search = indptr[n];
                                 auto e_it = std::lower_bound(ts.begin() + indptr[n], 
                                                              ts.begin() + indptr[n + 1], nts);
-                                e_search = std::max(int(e_it - ts.begin()), s_search);
+                                e_search = std::max(long(e_it - ts.begin()), s_search);
                             }
                             else
                             {
@@ -282,10 +282,10 @@ class ParallelSampler
                                 auto s_it = std::lower_bound(ts.begin() + indptr[n],
                                                              ts.begin() + indptr[n + 1],
                                                              nts + offset - window_duration);
-                                s_search = std::max(int(s_it - ts.begin()), indptr[n]);
+                                s_search = std::max(long(s_it - ts.begin()), indptr[n]);
                                 auto e_it = std::lower_bound(ts.begin() + indptr[n],
                                                              ts.begin() + indptr[n + 1], nts + offset);
-                                e_search = std::max(int(e_it - ts.begin()), s_search);
+                                e_search = std::max(long(e_it - ts.begin()), s_search);
                             }
                             if (tid == 0)
                                 ret[0].search_time += omp_get_wtime() - t_search_s;
