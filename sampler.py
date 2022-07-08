@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd 
 from tqdm import tqdm
 from sampler_core import ParallelSampler, TemporalGraphBlock
-from utils import to_dgl_blocks
 
 class NegLinkSampler:
 
@@ -44,16 +43,11 @@ if __name__ == '__main__':
     uni_time = 0 
     total_nodes = 0 
     unique_nodes = 0
-    for _, rows in df.groupby(df.index // args.batch_size):
+    for _, rows in tqdm(df.groupby(df.index // args.batch_size)):
         root_nodes = np.concatenate([rows.src.values, rows.dst.values]).astype(np.int32)
         ts = np.concatenate([rows.time.values, rows.time.values]).astype(np.float32)
         sampler.sample(root_nodes, ts)
         ret = sampler.get_ret()
-        blocks = to_dgl_blocks(ret, 1)
-        block = blocks[0][0]
-        print(block.num_src_nodes() - block.num_dst_nodes())
-
-
 
         tot_time += ret[0].tot_time()
         ptr_time += ret[0].ptr_time()
