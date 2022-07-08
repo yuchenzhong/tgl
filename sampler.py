@@ -44,8 +44,8 @@ if __name__ == '__main__':
     total_nodes = 0 
     unique_nodes = 0
     for _, rows in tqdm(df.groupby(df.index // args.batch_size)):
-        root_nodes = np.concatenate([rows.src.values, rows.dst.values]).astype(np.int32)
-        ts = np.concatenate([rows.time.values, rows.time.values]).astype(np.float32)
+        root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int32)
+        ts = np.concatenate([rows.time.values, rows.time.values, rows.time.values]).astype(np.float32)
         sampler.sample(root_nodes, ts)
         ret = sampler.get_ret()
 
