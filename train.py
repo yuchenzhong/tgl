@@ -23,6 +23,8 @@ parser.add_argument(
 parser.add_argument(
     '--rand_node_features', type=int, default=0,
     help='use random node featrues')
+parser.add_argument("--seed", type=int, default=42)
+
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -34,7 +36,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-# set_seed(0)
+set_seed(args.seed)
 
 
 node_feats, edge_feats = load_feat(
