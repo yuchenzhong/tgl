@@ -1,26 +1,32 @@
 import argparse
 import os
-
-parser=argparse.ArgumentParser()
-parser.add_argument('--data', type=str, help='dataset name')
-parser.add_argument('--config', type=str, help='path to config file')
-parser.add_argument('--gpu', type=str, default='0', help='which GPU to use')
-parser.add_argument('--model_name', type=str, default='', help='name of stored model')
-parser.add_argument('--rand_edge_features', type=int, default=0, help='use random edge featrues')
-parser.add_argument('--rand_node_features', type=int, default=0, help='use random node featrues')
-args=parser.parse_args()
-
-os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-
-import torch
-import time
 import random
-import dgl
+import time
+
 import numpy as np
+import torch
+from sklearn.metrics import average_precision_score, roc_auc_score
+
 from modules import *
 from sampler import *
 from utils import *
-from sklearn.metrics import average_precision_score, roc_auc_score
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--data', type=str, help='dataset name')
+parser.add_argument('--config', type=str, help='path to config file')
+parser.add_argument('--gpu', type=str, default='0', help='which GPU to use')
+parser.add_argument('--model_name', type=str, default='',
+                    help='name of stored model')
+parser.add_argument(
+    '--rand_edge_features', type=int, default=0,
+    help='use random edge featrues')
+parser.add_argument(
+    '--rand_node_features', type=int, default=0,
+    help='use random node featrues')
+args = parser.parse_args()
+
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+
 
 def set_seed(seed):
     random.seed(seed)
@@ -30,7 +36,9 @@ def set_seed(seed):
 
 # set_seed(0)
 
-node_feats, edge_feats = load_feat(args.data, args.rand_edge_features, args.rand_node_features)
+
+node_feats, edge_feats = load_feat(
+    args.data, args.rand_edge_features, args.rand_node_features)
 g, df = load_graph(args.data)
 sample_param, memory_param, gnn_param, train_param = parse_config(args.config)
 train_edge_end = df[df['ext_roll'].gt(0)].index[0]
@@ -41,25 +49,36 @@ gnn_dim_edge = 0 if edge_feats is None else edge_feats.shape[1]
 combine_first = False
 if 'combine_neighs' in train_param and train_param['combine_neighs']:
     combine_first = True
-model = GeneralModel(gnn_dim_node, gnn_dim_edge, sample_param, memory_param, gnn_param, train_param, combined=combine_first).cuda()
-mailbox = MailBox(memory_param, g['indptr'].shape[0] - 1, gnn_dim_edge) if memory_param['type'] != 'none' else None
+model = GeneralModel(
+    gnn_dim_node, gnn_dim_edge, sample_param, memory_param, gnn_param,
+    train_param, combined=combine_first).cuda()
+mailbox = MailBox(memory_param, g['indptr'].shape[0] - 1,
+                  gnn_dim_edge) if memory_param['type'] != 'none' else None
 creterion = torch.nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=train_param['lr'])
 if 'all_on_gpu' in train_param and train_param['all_on_gpu']:
-    if node_feats is not None:
-        node_feats = node_feats.cuda()
-    if edge_feats is not None:
-        edge_feats = edge_feats.cuda()
+    # if node_feats is not None:
+    #     node_feats = node_feats.cuda()
+    # if edge_feats is not None:
+    #     edge_feats = edge_feats.cuda()
     if mailbox is not None:
         mailbox.move_to_gpu()
 
 sampler = None
 if not ('no_sample' in sample_param and sample_param['no_sample']):
-    sampler = ParallelSampler(g['indptr'], g['indices'], g['eid'], g['ts'].astype(np.float32),
-                              sample_param['num_thread'], 1, sample_param['layer'], sample_param['neighbor'],
-                              sample_param['strategy']=='recent', sample_param['prop_time'],
-                              sample_param['history'], float(sample_param['duration']))
+    sampler = ParallelSampler(
+        g['indptr'],
+        g['indices'],
+        g['eid'],
+        g['ts'].astype(np.float32),
+        sample_param['num_thread'],
+        1, sample_param['layer'],
+        sample_param['neighbor'],
+        sample_param['strategy'] == 'recent', sample_param['prop_time'],
+        sample_param['history'],
+        float(sample_param['duration']))
 neg_link_sampler = NegLinkSampler(g['indptr'].shape[0] - 1)
+
 
 def eval(mode='val'):
     model.eval()
@@ -73,10 +92,16 @@ def eval(mode='val'):
         eval_df = df[:train_edge_end]
     with torch.no_grad():
         total_loss = 0
-        for _, rows in eval_df.groupby(eval_df.index // train_param['batch_size']):
-        # for _, rows in eval_df.groupby(eval_df.index // 600):
-            root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int64)
-            ts = np.concatenate([rows.time.values, rows.time.values, rows.time.values]).astype(np.float32)
+        for _, rows in eval_df.groupby(
+                eval_df.index // train_param['batch_size']):
+            # for _, rows in eval_df.groupby(eval_df.index // 600):
+            root_nodes = np.concatenate(
+                [rows.src.values, rows.dst.values, neg_link_sampler.sample(
+                    len(rows))]).astype(
+                np.int64)
+            ts = np.concatenate(
+                [rows.time.values, rows.time.values, rows.time.values]).astype(
+                np.float32)
             if sampler is not None:
                 if 'no_neg' in sample_param and sample_param['no_neg']:
                     pos_root_end = root_nodes.shape[0] * 2 // 3
@@ -85,17 +110,22 @@ def eval(mode='val'):
                     sampler.sample(root_nodes, ts)
                 ret = sampler.get_ret()
             if gnn_param['arch'] != 'identity':
-                mfgs = to_dgl_blocks(ret, sample_param['history'])
+                mfgs = to_dgl_blocks(ret, sample_param['history'], cuda=False)
             else:
                 mfgs = node_to_dgl_blocks(root_nodes, ts)
-            mfgs = prepare_input(mfgs, node_feats, edge_feats, combine_first=combine_first)
+            mfgs = prepare_input(mfgs, node_feats, edge_feats,
+                                 combine_first=combine_first)
+            mfgs = mfgs_to_cuda(mfgs)
             if mailbox is not None:
                 mailbox.prep_input_mails(mfgs[0])
             pred_pos, pred_neg = model(mfgs)
             total_loss += creterion(pred_pos, torch.ones_like(pred_pos))
             total_loss += creterion(pred_neg, torch.zeros_like(pred_neg))
             y_pred = torch.cat([pred_pos, pred_neg], dim=0).sigmoid().cpu()
-            y_true = torch.cat([torch.ones(pred_pos.size(0)), torch.zeros(pred_neg.size(0))], dim=0)
+            y_true = torch.cat(
+                [torch.ones(pred_pos.size(0)),
+                 torch.zeros(pred_neg.size(0))],
+                dim=0)
             aps.append(average_precision_score(y_true, y_pred))
             aucs.append(roc_auc_score(y_true, y_pred))
             if mailbox is not None:
@@ -103,14 +133,21 @@ def eval(mode='val'):
                 mem_edge_feats = edge_feats[eid] if edge_feats is not None else None
                 block = None
                 if memory_param['deliver_to'] == 'neighbors':
-                    block = to_dgl_blocks(ret, sample_param['history'], reverse=True)[0][0]
-                mailbox.update_mailbox(model.memory_updater.last_updated_nid, model.memory_updater.last_updated_memory, root_nodes, ts, mem_edge_feats, block)
-                mailbox.update_memory(model.memory_updater.last_updated_nid, model.memory_updater.last_updated_memory, model.memory_updater.last_updated_ts)
+                    block = to_dgl_blocks(
+                        ret, sample_param['history'],
+                        reverse=True)[0][0]
+                mailbox.update_mailbox(model.memory_updater.last_updated_nid,
+                                       model.memory_updater.last_updated_memory,
+                                       root_nodes, ts, mem_edge_feats, block)
+                mailbox.update_memory(model.memory_updater.last_updated_nid,
+                                      model.memory_updater.last_updated_memory,
+                                      model.memory_updater.last_updated_ts)
         if mode == 'val':
             val_losses.append(float(total_loss))
     ap = float(torch.tensor(aps).mean())
     auc = float(torch.tensor(aucs).mean())
     return ap, auc
+
 
 if not os.path.isdir('models'):
     os.mkdir('models')
@@ -122,25 +159,36 @@ best_ap = 0
 best_e = 0
 val_losses = list()
 group_indexes = list()
-group_indexes.append(np.array(df[:train_edge_end].index // train_param['batch_size']))
+group_indexes.append(np.array(
+    df[: train_edge_end].index //
+    train_param['batch_size']))
 if 'reorder' in train_param:
     # random chunk shceduling
     reorder = train_param['reorder']
     group_idx = list()
     for i in range(reorder):
         group_idx += list(range(0 - i, reorder - i))
-    group_idx = np.repeat(np.array(group_idx), train_param['batch_size'] // reorder)
-    group_idx = np.tile(group_idx, train_edge_end // train_param['batch_size'] + 1)[:train_edge_end]
+    group_idx = np.repeat(
+        np.array(group_idx),
+        train_param['batch_size'] // reorder)
+    group_idx = np.tile(group_idx, train_edge_end //
+                        train_param['batch_size'] + 1)[:train_edge_end]
     group_indexes.append(group_indexes[0] + group_idx)
     base_idx = group_indexes[0]
     for i in range(1, train_param['reorder']):
-        additional_idx = np.zeros(train_param['batch_size'] // train_param['reorder'] * i) - 1
-        group_indexes.append(np.concatenate([additional_idx, base_idx])[:base_idx.shape[0]])
+        additional_idx = np.zeros(
+            train_param['batch_size'] // train_param['reorder'] * i) - 1
+        group_indexes.append(np.concatenate(
+            [additional_idx, base_idx])[:base_idx.shape[0]])
+
 for e in range(train_param['epoch']):
     print('Epoch {:d}:'.format(e))
-    time_sample = 0
-    time_prep = 0
-    time_tot = 0
+    epoch_time_start = time.time()
+    total_loss = 0
+    sample_time = 0
+    feature_time = 0
+    train_time = 0
+
     total_loss = 0
     # training
     model.train()
@@ -149,10 +197,16 @@ for e in range(train_param['epoch']):
     if mailbox is not None:
         mailbox.reset()
         model.memory_updater.last_updated_nid = None
-    for _, rows in df[:train_edge_end].groupby(group_indexes[random.randint(0, len(group_indexes) - 1)]):
-        t_tot_s = time.time()
-        root_nodes = np.concatenate([rows.src.values, rows.dst.values, neg_link_sampler.sample(len(rows))]).astype(np.int64)
-        ts = np.concatenate([rows.time.values, rows.time.values, rows.time.values]).astype(np.float32)
+    for _, rows in df[: train_edge_end].groupby(
+            group_indexes[random.randint(0, len(group_indexes) - 1)]):
+        time_start = time.time()
+        root_nodes = np.concatenate(
+            [rows.src.values, rows.dst.values, neg_link_sampler.sample(
+                len(rows))]).astype(
+            np.int64)
+        ts = np.concatenate(
+            [rows.time.values, rows.time.values, rows.time.values]).astype(
+            np.float32)
         if sampler is not None:
             if 'no_neg' in sample_param and sample_param['no_neg']:
                 pos_root_end = root_nodes.shape[0] * 2 // 3
@@ -160,16 +214,23 @@ for e in range(train_param['epoch']):
             else:
                 sampler.sample(root_nodes, ts)
             ret = sampler.get_ret()
-            time_sample += ret[0].sample_time()
-        t_prep_s = time.time()
         if gnn_param['arch'] != 'identity':
-            mfgs = to_dgl_blocks(ret, sample_param['history'])
+            mfgs = to_dgl_blocks(ret, sample_param['history'], cuda=False)
         else:
             mfgs = node_to_dgl_blocks(root_nodes, ts)
-        mfgs = prepare_input(mfgs, node_feats, edge_feats, combine_first=combine_first)
+
+        sample_end = time.time()
+
+        mfgs = prepare_input(mfgs, node_feats, edge_feats,
+                             combine_first=combine_first)
+        mfgs = mfgs_to_cuda(mfgs)
+
+        feature_end = time.time()
+
+        t_train_s = time.time()
         if mailbox is not None:
             mailbox.prep_input_mails(mfgs[0])
-        time_prep += time.time() - t_prep_s
+
         optimizer.zero_grad()
         pred_pos, pred_neg = model(mfgs)
         loss = creterion(pred_pos, torch.ones_like(pred_pos))
@@ -177,24 +238,40 @@ for e in range(train_param['epoch']):
         total_loss += float(loss) * train_param['batch_size']
         loss.backward()
         optimizer.step()
-        t_prep_s = time.time()
         if mailbox is not None:
             eid = rows['Unnamed: 0'].values
             mem_edge_feats = edge_feats[eid] if edge_feats is not None else None
             block = None
             if memory_param['deliver_to'] == 'neighbors':
-                block = to_dgl_blocks(ret, sample_param['history'], reverse=True)[0][0]
-            mailbox.update_mailbox(model.memory_updater.last_updated_nid, model.memory_updater.last_updated_memory, root_nodes, ts, mem_edge_feats, block)
-            mailbox.update_memory(model.memory_updater.last_updated_nid, model.memory_updater.last_updated_memory, model.memory_updater.last_updated_ts)
-        time_prep += time.time() - t_prep_s
-        time_tot += time.time() - t_tot_s
+                block = to_dgl_blocks(
+                    ret, sample_param['history'],
+                    reverse=True)[0][0]
+            mailbox.update_mailbox(
+                model.memory_updater.last_updated_nid, model.memory_updater.
+                last_updated_memory, root_nodes, ts, mem_edge_feats, block)
+            mailbox.update_memory(
+                model.memory_updater.last_updated_nid, model.memory_updater.
+                last_updated_memory, model.memory_updater.last_updated_ts)
+
+        train_end = time.time()
+
+        sample_time += sample_end - time_start
+        feature_time += feature_end - sample_end
+        train_time += train_end - feature_end
+
+    epoch_time = time.time() - epoch_time_start
+    print('Epoch time:{:.2f}s; dataloader time:{:.2f}s sample time:{:.2f}s; feature time: {:.2f}s train time:{:.2f}s.'.format(
+        epoch_time, epoch_time - sample_time - feature_time - train_time, sample_time, feature_time, train_time))
+
     ap, auc = eval('val')
     if e > 2 and ap > best_ap:
         best_e = e
         best_ap = ap
         torch.save(model.state_dict(), path_saver)
-    print('\ttrain loss:{:.4f}  val ap:{:4f}  val auc:{:4f}'.format(total_loss, ap, auc))
-    print('\ttotal time:{:.2f}s sample time:{:.2f}s prep time:{:.2f}s'.format(time_tot, time_sample, time_prep))
+
+    print(
+        '\ttrain loss:{:.4f}  val ap:{:4f}  val auc:{:4f}'.format(
+            total_loss, ap, auc))
 
 print('Loading model at epoch {}...'.format(best_e))
 model.load_state_dict(torch.load(path_saver))
