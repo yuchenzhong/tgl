@@ -56,7 +56,7 @@ if __name__ == '__main__':
         sample_config['history'],
         float(sample_config['duration']))
 
-    num_nodes = max(int(df['src'].max()), int(df['dst'].max()))
+    num_nodes = max(int(df['src'].max()), int(df['dst'].max())) + 1
     neg_link_sampler = NegLinkSampler(num_nodes)
 
     tot_time = 0
